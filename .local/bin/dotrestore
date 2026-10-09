@@ -58,9 +58,9 @@ fi
 
 "${GIT[@]}" rev-parse --verify -q HEAD >/dev/null \
   || die "仓库里还没有提交，无法还原"
-"${GIT[@]}" reset -q --hard HEAD   # 保证索引与 HEAD 一致
+"${GIT[@]}" config status.showUntrackedFiles no
 
-mapfile -t TRACKED < <("${GIT[@]}" ls-files)
+mapfile -t TRACKED < <("${GIT[@]}" ls-tree -r --name-only HEAD)
 ((${#TRACKED[@]})) || die "仓库里没有跟踪任何文件"
 info "仓库跟踪 ${#TRACKED[@]} 个文件"
 
@@ -75,7 +75,6 @@ info "其中 ${#overwrite[@]} 个文件在本机已存在，会被覆盖"
 
 if ((DRY)); then
   printf '%s\n' "${overwrite[@]}" | sed 's/^/      覆盖: /'
-  printf '%s\n' "${TRACKED[@]}" | sed 's/^/      写入: /' | head -0
   echo "      (预演结束，未写入任何文件)"
   exit 0
 fi
@@ -101,7 +100,7 @@ fi
 # ---------------------------------------------------------------------------
 # 4) 还原
 # ---------------------------------------------------------------------------
-"${GIT[@]}" checkout -f -- .
+"${GIT[@]}" checkout -f
 ok "配置已还原到 \$HOME"
 
 # ---------------------------------------------------------------------------

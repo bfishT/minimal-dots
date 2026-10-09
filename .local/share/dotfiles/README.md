@@ -29,8 +29,8 @@ git --git-dir="$HOME/.dotfiles" --work-tree="$HOME" config core.bare false
 git --git-dir="$HOME/.dotfiles" --work-tree="$HOME" config core.worktree "$HOME"
 git --git-dir="$HOME/.dotfiles" --work-tree="$HOME" config status.showUntrackedFiles no
 
-# 4) 还原配置
-git --git-dir="$HOME/.dotfiles" --work-tree="$HOME" checkout -f -- .
+# 4) 还原配置（注意：不要带 `-- .`）
+git --git-dir="$HOME/.dotfiles" --work-tree="$HOME" checkout -f
 
 # 5) 之后 dotrestore / dotsave 就有了，可继续用
 dotrestore

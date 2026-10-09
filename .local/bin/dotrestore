@@ -137,5 +137,8 @@ cat <<'EOF'
 
 8) 确认 shell 别名可用（在 ~/.zshrc 里）:
      alias dot='git --git-dir=$HOME/.dotfiles --work-tree=$HOME'
+
+完整说明（含原理/安全守卫/目录结构）:
+     less ~/.github/README.md
 ---------------------------------------------------------------------------
 EOF

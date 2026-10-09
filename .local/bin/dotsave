@@ -80,11 +80,13 @@ PATHS=(
   .pi/agent/extensions
   .pi/agent/skills
 
+  # ---- 文档（.github/README.md 会被 GitHub 渲染成仓库首页）----
+  .github
+
   # ---- 其他 ----
   .config/ketch
   .config/pkglist.txt
   .config/pkglist-aur.txt
-  .local/share/dotfiles
 )
 
 # 目录递归时剪掉的目录 / 跳过的文件名模式
@@ -245,16 +247,20 @@ hits="$("${GIT[@]}" diff --cached -U0 --diff-filter=ACMR | grep -E '^\+' | grep 
 if [[ -n "$hits" ]]; then
   printf '%s\n' "$hits" | head -20 | sed 's/^/      /' >&2
   unstage_all
-  die "暂存内容里检出疑似密钥（见上），已全部取消暂存"
+  die "暂存内容里检出疑似密钥（见上），已全部取消暂存
+     若那是文档里在描述这些模式本身，改写措辞（如 -----BEGIN … PRIVATE KEY-----）即可"
 fi
 ok "密钥扫描通过"
 
 # ---------------------------------------------------------------------------
 # 5) 安全检查 C：暂存体积
 # ---------------------------------------------------------------------------
-bytes="$("${GIT[@]}" diff --cached --name-only -z \
+# 只统计新增/修改的内容，排除删除（已删除的文件 stat 会失败，
+# 而 set -e + pipefail 会让整个脚本静默中断）
+bytes="$("${GIT[@]}" diff --cached --name-only -z --diff-filter=ACMR \
         | xargs -0 -r stat -c %s 2>/dev/null \
-        | awk '{s+=$1} END {print s+0}')"
+        | awk '{s+=$1} END {print s+0}' || true)"
+: "${bytes:=0}"
 human="$(numfmt --to=iec "$bytes" 2>/dev/null || echo "$bytes B")"
 if (( bytes > MAX_BYTES )); then
   unstage_all

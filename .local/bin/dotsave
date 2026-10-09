@@ -167,6 +167,7 @@ tmpf="$(mktemp)"
 printf '%s\0' "${FILES[@]}" "${EXTRA[@]}" 2>/dev/null | sort -zu > "$tmpf"
 mapfile -d '' -t ALL < "$tmpf"
 rm -f "$tmpf"
+((${#ALL[@]})) || die "白名单没匹配到任何文件，中止"
 
 rel=()
 for f in "${ALL[@]}"; do
@@ -183,7 +184,27 @@ if ((DRY_RUN)); then
 fi
 ((${#rel[@]})) || die "白名单没匹配到任何文件，中止"
 
-printf '%s\0' "${rel[@]}" | xargs -0 -r "${GIT[@]}" add -f --
+# 注意：不能用 `git add`。.config/nvim 和 .config/quickshell 里各自有一个 .git，
+# git 会把它们当成子仓库（submodule），导致这两个目录下的文件被**静默跳过**。
+# 改用 hash-object + update-index，直接写索引，绕过子仓库检测。
+info "写入索引..."
+hash_err="$(mktemp)"
+mapfile -t HASHES < <(printf '%s\n' "${rel[@]}" | "${GIT[@]}" hash-object -w --stdin-paths 2>"$hash_err")
+if ((${#HASHES[@]} != ${#rel[@]})); then
+  cat "$hash_err" >&2; rm -f "$hash_err"
+  die "hash-object 返回 ${#HASHES[@]} 个对象，与文件数 ${#rel[@]} 不一致"
+fi
+rm -f "$hash_err"
+
+{
+  for i in "${!rel[@]}"; do
+    f="${rel[$i]}"
+    mode=100644
+    [[ -x "$HOME/$f" ]] && mode=100755
+    printf '%s %s\t%s\n' "$mode" "${HASHES[$i]}" "$f"
+  done
+} | "${GIT[@]}" update-index --add --index-info
+ok "索引已更新"
 
 # ---------------------------------------------------------------------------
 # 2) 同步删除：已跟踪但本地已消失的文件

@@ -1,0 +1,21 @@
+singleton Theme 1.0 Theme.qml
+singleton Brightness 1.0 Brightness.qml
+singleton Idle 1.0 Idle.qml
+singleton Power 1.0 Power.qml
+
+Backlight 1.0 Backlight.qml
+Battery 1.0 Battery.qml
+Clock 1.0 Clock.qml
+Cpu 1.0 Cpu.qml
+IdleInhibitorBar 1.0 IdleInhibitorBar.qml
+Memory 1.0 Memory.qml
+Mode 1.0 Mode.qml
+MonitorCommand 1.0 MonitorCommand.qml
+PowerMenu 1.0 PowerMenu.qml
+NetworkStatus 1.0 NetworkStatus.qml
+PulseAudio 1.0 PulseAudio.qml
+SPlayer 1.0 SPlayer.qml
+Tray 1.0 Tray.qml
+TrayMenu 1.0 TrayMenu.qml
+TrayMenuList 1.0 TrayMenuList.qml
+Workspaces 1.0 Workspaces.qml

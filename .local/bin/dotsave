@@ -1,0 +1,268 @@
+#!/usr/bin/env bash
+# =============================================================================
+# dotsave — 把核心配置提交到 ~/.dotfiles 并推送
+# -----------------------------------------------------------------------------
+# 用法:
+#   dotsave              # 暂存白名单配置 -> 安全检查 -> commit -> push
+#   dotsave -m "msg"     # 自定义提交信息
+#   dotsave --no-push    # 只本地提交，不推送
+#   dotsave -n           # dry-run：只显示会暂存哪些文件，不写入
+#   dotsave --list       # 打印白名单根路径
+# =============================================================================
+set -euo pipefail
+
+GIT=(git --git-dir="$HOME/.dotfiles" --work-tree="$HOME")
+MAX_BYTES=$((50 * 1024 * 1024))   # 暂存内容超过 50MB 直接中止
+
+DO_PUSH=1
+DRY_RUN=0
+MSG=""
+
+# ---------------------------------------------------------------------------
+# 白名单：只备份这些路径（目录会递归，但自动剪掉 .git / .claude / node_modules）
+# 注意 .local/bin 里的 ketch(20MB ELF) / editppt(pipx软链) / comment-checker 不备份
+# ---------------------------------------------------------------------------
+PATHS=(
+  # ---- shell / 基础 rc ----
+  .zshrc
+  .bashrc
+  .p10k.zsh
+  .tmux.conf
+  .vimrc
+  .gitconfig
+
+  # ---- XDG 基础 ----
+  .config/user-dirs.dirs
+  .config/mimeapps.list
+  .config/starship.toml
+
+  # ---- Hyprland 及桌面配套 ----
+  .config/hypr
+  .config/quickshell
+  .config/waybar
+  .config/mako
+  .config/swaylock
+  .config/dunst
+  .config/wlogout
+  .config/wofi
+  .config/rofi
+  .config/fuzzel/fuzzel.ini
+  .config/hyde/hyde.conf
+
+  # ---- 终端 / 工具 ----
+  .config/kitty/kitty.conf
+  .config/kitty/theme.conf
+  .config/fish/config.fish
+  .config/fish/conf.d
+  .config/btop
+  .config/cava
+  .config/fastfetch/config.jsonc
+
+  # ---- 编辑器 ----
+  .config/nvim/init.lua
+  .config/nvim/lua
+  .config/nvim/lazy-lock.json
+  .config/nvim/.vim/coc-settings.json
+
+  # ---- 自写脚本 ----
+  .scripts
+  .local/bin/pushclipboard
+  .local/bin/dotsave
+  .local/bin/dotrestore
+
+  # ---- pi 配置（不含 auth.json / models.json / sessions/ / git/）----
+  .pi/agent/AGENTS.md
+  .pi/agent/settings.json
+  .pi/agent/keybindings.conf
+  .pi/agent/keybindings.json
+  .pi/agent/models.example.json
+  .pi/agent/agents
+  .pi/agent/extensions
+  .pi/agent/skills
+
+  # ---- 其他 ----
+  .config/ketch
+  .local/share/dotfiles
+)
+
+# 目录递归时剪掉的目录 / 跳过的文件名模式
+PRUNE=(.git .claude node_modules __pycache__ .venv venv)
+SKIP_GLOBS=(
+  '*.png' '*.jpg' '*.jpeg' '*.webp' '*.gif' '*.ico' '*.bmp'
+  '*.bak' '*.old' '*.orig' '*.rej' '*.tmp' '*.swp' '*.swo'
+  '*.log' '*.pyc' '*.so' '*.o' '*.zwc' '*.bundle'
+)
+
+# 明确排除的单个文件（编译产物等）
+SKIP_FILES=(
+  .config/waybar/scripts/waybar-splayer
+)
+
+# 禁止入库的文件名（第二道防线，白名单写错也能拦住）
+FORBIDDEN_RE='(^|/)(auth\.json|auth\.json\.bak|models\.json|models-store\.json|crashes\.json|\.git-credentials|\.netrc|id_rsa|id_ed25519|known_hosts)$|^\.ssh/|^\.gnupg/|^\.pi/agent/sessions/|^\.pi/agent/git/|^\.codex/|^\.cc-switch/'
+
+# 暂存内容里禁止出现的密钥特征
+# 注意 sk- 后面要求 ≥32 个纯字母数字（不允许 -/_），否则 SVG 里的
+# "mask-powermask-path-effect5" 之类会误报
+SECRET_RE='(^|[^A-Za-z0-9_-])(sk-[A-Za-z0-9]{32,}|sk-proj-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|xox[bap]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)'
+
+unstage_all() {
+  if "${GIT[@]}" rev-parse --verify -q HEAD >/dev/null; then
+    "${GIT[@]}" reset -q -- .
+  else
+    "${GIT[@]}" rm -r --cached -q -f -- . >/dev/null 2>&1 || true
+  fi
+}
+
+C_R=$'\e[31m'; C_G=$'\e[32m'; C_Y=$'\e[33m'; C_B=$'\e[36m'; C_0=$'\e[0m'
+info() { printf '%s==>%s %s\n' "$C_B" "$C_0" "$*"; }
+ok()   { printf '%s  ok%s %s\n' "$C_G" "$C_0" "$*"; }
+warn() { printf '%s  !!%s %s\n' "$C_Y" "$C_0" "$*" >&2; }
+die()  { printf '%s  xx%s %s\n' "$C_R" "$C_0" "$*" >&2; exit 1; }
+
+# ---------------------------------------------------------------------------
+while (($#)); do
+  case "$1" in
+    -m) MSG="${2:-}"; shift 2 ;;
+    -m*) MSG="${1#-m}"; shift ;;
+    --no-push) DO_PUSH=0; shift ;;
+    -n|--dry-run) DRY_RUN=1; shift ;;
+    --list) printf '%s\n' "${PATHS[@]}"; exit 0 ;;
+    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+    *) die "未知参数: $1" ;;
+  esac
+done
+
+cd "$HOME"
+[[ -d "$HOME/.dotfiles" ]] || die "找不到 ~/.dotfiles，请先运行: git init --bare ~/.dotfiles"
+"${GIT[@]}" rev-parse --git-dir >/dev/null || die "~/.dotfiles 不是有效仓库"
+
+# ---------------------------------------------------------------------------
+# 1) 展开白名单为文件列表（剪掉 .git 等目录，跳过二进制/缓存）
+# ---------------------------------------------------------------------------
+info "扫描白名单..."
+existing=(); missing=()
+for p in "${PATHS[@]}"; do
+  if [[ -e "$HOME/$p" || -L "$HOME/$p" ]]; then existing+=("$HOME/$p"); else missing+=("$p"); fi
+done
+((${#missing[@]})) && warn "白名单里这些路径不存在（已跳过）: ${missing[*]}"
+((${#existing[@]})) || die "白名单路径全都不存在，中止"
+
+find_expr=(-name "${PRUNE[0]}")
+for d in "${PRUNE[@]:1}"; do find_expr+=(-o -name "$d"); done
+
+skip_expr=()
+for g in "${SKIP_GLOBS[@]}"; do skip_expr+=(-o -name "$g"); done
+
+mapfile -d '' -t FILES < <(
+  find "${existing[@]}" \
+       \( "${find_expr[@]}" \) -prune -o \
+       -type f ! \( "${skip_expr[@]:1}" \) -print0 2>/dev/null
+) || true
+
+# 白名单里显式点名的单个文件也要保留（即使命中 SKIP_GLOBS）
+mapfile -d '' -t EXTRA < <(printf '%s\0' "${existing[@]}" | while IFS= read -r -d '' e; do [[ -f "$e" ]] && printf '%s\0' "$e"; done)
+
+tmpf="$(mktemp)"
+printf '%s\0' "${FILES[@]}" "${EXTRA[@]}" 2>/dev/null | sort -zu > "$tmpf"
+mapfile -d '' -t ALL < "$tmpf"
+rm -f "$tmpf"
+
+rel=()
+for f in "${ALL[@]}"; do
+  r="${f#"$HOME"/}"
+  skip=0
+  for s in "${SKIP_FILES[@]}"; do [[ "$r" == "$s" ]] && skip=1; done
+  ((skip)) || rel+=("$r")
+done
+ok "命中 ${#rel[@]} 个文件"
+
+if ((DRY_RUN)); then
+  printf '%s\n' "${rel[@]}" | sed 's/^/    /'
+  exit 0
+fi
+((${#rel[@]})) || die "白名单没匹配到任何文件，中止"
+
+printf '%s\0' "${rel[@]}" | xargs -0 -r "${GIT[@]}" add -f --
+
+# ---------------------------------------------------------------------------
+# 2) 同步删除：已跟踪但本地已消失的文件
+# ---------------------------------------------------------------------------
+deleted=()
+while IFS= read -r -d '' f; do
+  [[ "$f" == */.git/* || "$f" == .git/* ]] && continue
+  [[ -e "$HOME/$f" || -L "$HOME/$f" ]] || deleted+=("$f")
+done < <("${GIT[@]}" ls-files -z)
+if ((${#deleted[@]})); then
+  printf '%s\0' "${deleted[@]}" | xargs -0 -r "${GIT[@]}" rm --cached -q --
+  warn "已从索引移除 ${#deleted[@]} 个本地已删除的文件: ${deleted[*]}"
+fi
+
+# ---------------------------------------------------------------------------
+# 3) 安全检查 A：暂存路径里不能有敏感文件
+# ---------------------------------------------------------------------------
+mapfile -t staged < <("${GIT[@]}" diff --cached --name-only)
+((${#staged[@]})) || { ok "没有变化，无需提交"; exit 0; }
+
+bad=()
+for f in "${staged[@]}"; do
+  [[ "$f" =~ $FORBIDDEN_RE ]] && bad+=("$f")
+done
+if ((${#bad[@]})); then
+  printf '%s\n' "${bad[@]}" | sed 's/^/      /' >&2
+  unstage_all
+  die "暂存区出现禁止入库的文件（见上），已全部取消暂存"
+fi
+ok "路径检查通过（无 auth.json / models.json / .ssh 等）"
+
+# ---------------------------------------------------------------------------
+# 4) 安全检查 B：暂存内容里不能有密钥
+# ---------------------------------------------------------------------------
+hits="$("${GIT[@]}" diff --cached -U0 --diff-filter=ACMR | grep -E '^\+' | grep -nE "$SECRET_RE" || true)"
+if [[ -n "$hits" ]]; then
+  printf '%s\n' "$hits" | head -20 | sed 's/^/      /' >&2
+  unstage_all
+  die "暂存内容里检出疑似密钥（见上），已全部取消暂存"
+fi
+ok "密钥扫描通过"
+
+# ---------------------------------------------------------------------------
+# 5) 安全检查 C：暂存体积
+# ---------------------------------------------------------------------------
+bytes="$("${GIT[@]}" diff --cached --name-only -z \
+        | xargs -0 -r stat -c %s 2>/dev/null \
+        | awk '{s+=$1} END {print s+0}')"
+human="$(numfmt --to=iec "$bytes" 2>/dev/null || echo "$bytes B")"
+if (( bytes > MAX_BYTES )); then
+  unstage_all
+  die "暂存内容 $human 超过上限 50M，已全部取消暂存（检查白名单）"
+fi
+ok "体积检查通过（$human）"
+
+# ---------------------------------------------------------------------------
+# 6) 提交
+# ---------------------------------------------------------------------------
+[[ -n "$MSG" ]] || MSG="backup: $(date '+%F %T') $(hostname)"
+"${GIT[@]}" commit -q -m "$MSG"
+ok "已提交: $("${GIT[@]}" log -1 --pretty='%h %s')"
+printf '     本次改动 %s 个文件:\n' "${#staged[@]}"
+printf '%s\n' "${staged[@]}" | head -40 | sed 's/^/       /'
+(( ${#staged[@]} > 40 )) && printf '       ... 其余 %d 个省略\n' "$(( ${#staged[@]} - 40 ))"
+
+# ---------------------------------------------------------------------------
+# 7) 推送
+# ---------------------------------------------------------------------------
+if ((DO_PUSH)); then
+  url="$("${GIT[@]}" remote get-url origin 2>/dev/null || true)"
+  if [[ -z "$url" ]]; then
+    warn "还没配置远端，先本地提交即可。之后执行："
+    printf '     git --git-dir=$HOME/.dotfiles --work-tree=$HOME remote add origin git@github.com:<你>/dotfiles.git\n     dotsave\n'
+    exit 0
+  fi
+  info "推送到 $url ..."
+  "${GIT[@]}" push -u origin main || die "push 失败（检查网络/代理/SSH key）"
+  ok "推送完成"
+  "${GIT[@]}" log -1 --pretty='     %H %ad %s' --date=iso
+else
+  info "跳过推送（--no-push），远端仍需: git --git-dir=\$HOME/.dotfiles --work-tree=\$HOME push -u origin main"
+fi

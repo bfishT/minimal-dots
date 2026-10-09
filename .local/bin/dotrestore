@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+# =============================================================================
+# dotrestore — 在新机器 / 重装后恢复 ~/.dotfiles 里的配置
+# -----------------------------------------------------------------------------
+# 用法:
+#   dotrestore <git-url>     # 首次：克隆 bare 仓库并还原到 $HOME
+#   dotrestore               # 已有 ~/.dotfiles，只做还原
+#   dotrestore -n            # 预演：只列出会写入/覆盖哪些文件
+#   dotrestore -y            # 跳过确认，直接还原
+#
+# 特性:
+#   * 覆盖前先把 $HOME 里将被覆盖的现有文件备份到
+#     ~/.dotfiles-restore-backup-<时间戳>/（出问题可回滚）
+# =============================================================================
+set -euo pipefail
+
+GITDIR="$HOME/.dotfiles"
+GIT=(git --git-dir="$GITDIR" --work-tree="$HOME")
+
+DRY=0
+ASSUME_YES=0
+URL=""
+
+C_R=$'\e[31m'; C_G=$'\e[32m'; C_Y=$'\e[33m'; C_B=$'\e[36m'; C_0=$'\e[0m'
+info() { printf '%s==>%s %s\n' "$C_B" "$C_0" "$*"; }
+ok()   { printf '%s  ok%s %s\n' "$C_G" "$C_0" "$*"; }
+warn() { printf '%s  !!%s %s\n' "$C_Y" "$C_0" "$*" >&2; }
+die()  { printf '%s  xx%s %s\n' "$C_R" "$C_0" "$*" >&2; exit 1; }
+
+while (($#)); do
+  case "$1" in
+    -n|--dry-run) DRY=1; shift ;;
+    -y|--yes) ASSUME_YES=1; shift ;;
+    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+    -*) die "未知参数: $1" ;;
+    *) URL="$1"; shift ;;
+  esac
+done
+
+cd "$HOME"
+
+# ---------------------------------------------------------------------------
+# 1) 准备仓库
+# ---------------------------------------------------------------------------
+if [[ -n "$URL" ]]; then
+  [[ -d "$GITDIR" ]] && die "$GITDIR 已存在，请先移走或直接不带 URL 运行"
+  info "克隆 $URL -> $GITDIR"
+  git clone --bare "$URL" "$GITDIR"
+  "${GIT[@]}" config core.bare false
+  "${GIT[@]}" config core.worktree "$HOME"
+  "${GIT[@]}" config status.showUntrackedFiles no
+  ok "仓库就绪"
+elif [[ -d "$GITDIR" ]]; then
+  ok "使用已有仓库 $GITDIR"
+else
+  die "找不到 $GITDIR。首次恢复请运行: dotrestore <git-url>"
+fi
+
+"${GIT[@]}" rev-parse --verify -q HEAD >/dev/null \
+  || die "仓库里还没有提交，无法还原"
+"${GIT[@]}" reset -q --hard HEAD   # 保证索引与 HEAD 一致
+
+mapfile -t TRACKED < <("${GIT[@]}" ls-files)
+((${#TRACKED[@]})) || die "仓库里没有跟踪任何文件"
+info "仓库跟踪 ${#TRACKED[@]} 个文件"
+
+# ---------------------------------------------------------------------------
+# 2) 列出会被覆盖的现有文件
+# ---------------------------------------------------------------------------
+overwrite=()
+for f in "${TRACKED[@]}"; do
+  [[ -e "$HOME/$f" ]] && overwrite+=("$f")
+done
+info "其中 ${#overwrite[@]} 个文件在本机已存在，会被覆盖"
+
+if ((DRY)); then
+  printf '%s\n' "${overwrite[@]}" | sed 's/^/      覆盖: /'
+  printf '%s\n' "${TRACKED[@]}" | sed 's/^/      写入: /' | head -0
+  echo "      (预演结束，未写入任何文件)"
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# 3) 备份将被覆盖的文件
+# ---------------------------------------------------------------------------
+BK="$HOME/.dotfiles-restore-backup-$(date +%Y%m%d-%H%M%S)"
+if ((${#overwrite[@]})); then
+  if ((ASSUME_YES)); then :; else
+    printf '继续会覆盖上面这些文件（旧文件将备份到 %s）。继续？[y/N] ' "$BK"
+    read -r ans
+    [[ "$ans" =~ ^[Yy]$ ]] || die "已取消"
+  fi
+  mkdir -p "$BK"
+  for f in "${overwrite[@]}"; do
+    mkdir -p "$BK/$(dirname "$f")"
+    cp -a --parents "$f" "$BK" 2>/dev/null || cp -a "$f" "$BK/$f"
+  done
+  ok "已备份 ${#overwrite[@]} 个旧文件 -> $BK"
+fi
+
+# ---------------------------------------------------------------------------
+# 4) 还原
+# ---------------------------------------------------------------------------
+"${GIT[@]}" checkout -f -- .
+ok "配置已还原到 \$HOME"
+
+# ---------------------------------------------------------------------------
+# 5) 后续手工步骤
+# ---------------------------------------------------------------------------
+cat <<'EOF'
+
+-------------------------------- 后续步骤 --------------------------------
+1) pi 的 API key（models.json 没进仓库，只存了模板）:
+     cp ~/.pi/agent/models.example.json ~/.pi/agent/models.json
+     然后编辑 ~/.pi/agent/models.json 填回各 provider 的 "apiKey"
+     （auth.json 也不在仓库里，需要重新登录: pi 里执行 /login）
+
+2) 安装软件包（若有 pkglist.txt）:
+     sudo pacman -S --needed - < ~/.config/pkglist.txt
+     yay -S --needed - < ~/.config/pkglist-aur.txt   # 若有
+
+3) nvim 插件（只需配置，插件按 lazy-lock.json 重装）:
+     nvim 里执行  :Lazy restore
+
+4) tmux 插件:
+     启动 tmux 后按  prefix + I   （prefix 是 C-a）
+
+5) kitty 主题库 / HyDE 主题（仓库里没存，需重新安装）:
+     git clone --depth=1 https://github.com/kovidgoyal/kitty-themes \
+         ~/.config/kitty/kitty-themes
+     # HyDE: https://github.com/HyDE-Project/HyDE
+
+6) 字体 / 光标（Bibata-Modern-Classic、Noto Sans CJK 等）不在仓库里:
+     yay -S bibata-cursor-theme ttf-jetbrains-mono-nerd
+
+7) 重新登录 ssh / 恢复 GPG:
+     # 私钥不在仓库里，从你的离线备份放回 ~/.ssh 并 chmod 600
+
+8) 确认 shell 别名可用（在 ~/.zshrc 里）:
+     alias dot='git --git-dir=$HOME/.dotfiles --work-tree=$HOME'
+---------------------------------------------------------------------------
+EOF

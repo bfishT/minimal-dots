@@ -1,0 +1,100 @@
+*{
+    font-family: JetBrainsMono;
+    font-size: 14px;
+    min-height: 0;
+    color: #e5e1e7;
+}
+
+window#waybar {
+    background-color: rgba(11, 11, 14, 0.86);
+    border-radius: 10pt
+}
+
+#workspaces{
+    margin-top: 3px;
+    margin-bottom: 2px;
+    margin-right: 10px;
+    margin-left: 25px;
+}
+
+#workspaces button{
+    border-radius: 15px;
+    margin-right: 10px;
+    padding: 1px 10px;
+    font-weight: bolder;
+    background-color: #1c1b1f;
+}
+
+#workspaces button.active, #workspaces button.focused{
+    padding: 0 22px;
+    box-shadow: rgba(6, 24, 44, 0.4) 0px 0px 0px 2px, rgba(6, 24, 44, 0.65) 0px 4px 6px -1px, rgba(255, 255, 255, 0.08) 0px 1px 0px inset;
+    background: #595992;
+}
+
+/* the "*" rule above also matches the button's inner label,
+   so the active color has to be set on the label explicitly */
+#workspaces button.active label, #workspaces button.focused label{
+    color: #e2dfff;
+}
+
+/* tray / status-icon context menu (e.g. right-click on QQ).
+   waybar registers its css screen-wide at USER priority, so the "*{color}"
+   rule above also hits popup menus and would paint near-white text on the
+   theme's white menu background. Give the menu its own colours. */
+menu {
+    background-color: #131317;
+    color: #e5e1e7;
+    border: 1px solid #45455c;
+    border-radius: 8px;
+    padding: 4px;
+}
+
+menu menuitem,
+menu menuitem label {
+    color: #e5e1e7;
+    padding: 2px 10px;
+}
+
+menu menuitem:hover,
+menu menuitem:hover label,
+menu menuitem:selected,
+menu menuitem:selected label {
+    background-color: #595992;
+    color: #e2dfff;
+}
+
+menu separator {
+    background-color: #45455c;
+}
+
+#tray,
+#mpd,
+#custom-weather,
+#cpu,
+#temperature,
+#memory,
+#sway-mode,
+#backlight,
+#pulseaudio,
+#custom-vpn,
+#disk,
+#custom-recorder,
+#custom-audiorec,
+#custom-splayer,
+#privacy,
+#battery,
+#clock,
+#network {
+	padding: 0 10px;
+}
+
+/* SPlayer module: playing gets an accent tint, paused fades back */
+#custom-splayer.playing {
+    color: #b9a8ff;
+    font-weight: bold;
+}
+
+#custom-splayer.paused {
+    color: #8a8694;
+    font-style: italic;
+}

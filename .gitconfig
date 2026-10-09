@@ -1,0 +1,18 @@
+[filter "lfs"]
+	required = true
+	clean = git-lfs clean -- %f
+	smudge = git-lfs smudge -- %f
+	process = git-lfs filter-process
+[http]
+	proxy = http://127.0.0.1:7890
+[https]
+	proxy = http://127.0.0.1:7890
+[user]
+	name = bfishT
+	email = 3118805287@qq.com
+[core]
+	editor = nvim
+[color]
+	ui = true
+[safe]
+	directory = *

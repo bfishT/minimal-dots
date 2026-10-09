@@ -1,0 +1,12 @@
+{
+  "lastChangelogVersion": "1.0.2",
+  "theme": "dark",
+  "defaultProvider": "opencode-go",
+  "defaultModel": "deepseek-v4.1-flash",
+  "defaultThinkingLevel": "high",
+  "hideThinkingBlock": false,
+  "tuiMode": "regular",
+  "packages": [
+    "git:github.com/hinsencamp/pi-research-agent"
+  ]
+}

@@ -279,7 +279,7 @@ if ((DO_PUSH)); then
   url="$("${GIT[@]}" remote get-url origin 2>/dev/null || true)"
   if [[ -z "$url" ]]; then
     warn "还没配置远端，先本地提交即可。之后执行："
-    printf '     git --git-dir=$HOME/.dotfiles --work-tree=$HOME remote add origin git@github.com:<你>/dotfiles.git\n     dotsave\n'
+    printf '     git --git-dir=$HOME/.dotfiles --work-tree=$HOME remote add origin git@github.com:bfishT/minimal-dots.git\n     dotsave\n'
     exit 0
   fi
   info "推送到 $url ..."

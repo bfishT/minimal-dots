@@ -3,7 +3,7 @@
 `$HOME` 直接作为 git work-tree 的配置备份（文件不搬动、不用软链接）。
 
 - 备份仓库：`~/.dotfiles`（bare + `core.worktree=$HOME`）
-- 远端：`git@github.com:<你的用户名>/<仓库名>.git`（**公开仓库**）
+- 远端：`git@github.com:bfishT/minimal-dots.git`（**公开仓库**）
 - 备份命令：`dotsave`（= `~/.local/bin/dotsave`）
 - 恢复命令：`dotrestore`（= `~/.local/bin/dotrestore`）
 - 别名（在 `~/.zshrc`）：`dot` / `dsave` / `drestore`
@@ -23,8 +23,8 @@ mkdir -p ~/.ssh && chmod 700 ~/.ssh
 # 把 id_ed25519 放进去
 chmod 600 ~/.ssh/id_ed25519
 
-# 3) 克隆 bare 仓库（把 <GITHUB-USER>/<REPO> 换成你的）
-git clone --bare git@github.com:<GITHUB-USER>/<REPO>.git "$HOME/.dotfiles"
+# 3) 克隆 bare 仓库（把 bfishT/minimal-dots 换成你的）
+git clone --bare git@github.com:bfishT/minimal-dots.git "$HOME/.dotfiles"
 git --git-dir="$HOME/.dotfiles" --work-tree="$HOME" config core.bare false
 git --git-dir="$HOME/.dotfiles" --work-tree="$HOME" config core.worktree "$HOME"
 git --git-dir="$HOME/.dotfiles" --work-tree="$HOME" config status.showUntrackedFiles no
@@ -37,7 +37,7 @@ dotrestore
 ```
 
 HTTPS 替代方案（没带 SSH key 时）：
-`git clone --bare https://github.com/<GITHUB-USER>/<REPO>.git "$HOME/.dotfiles"`
+`git clone --bare https://github.com/bfishT/minimal-dots.git "$HOME/.dotfiles"`
 
 > 备份仓库**不包含**：SSH 私钥、GPG key、API key、`~/.ssh/config`、
 > 浏览器 profile、字体/图标主题、nvim/tmux 插件本体、HyDE 主题库。

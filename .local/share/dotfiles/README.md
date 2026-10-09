@@ -3,7 +3,7 @@
 `$HOME` 直接作为 git work-tree 的配置备份（文件不搬动、不用软链接）。
 
 - 备份仓库：`~/.dotfiles`（bare + `core.worktree=$HOME`）
-- 远端：`git@github.com:bfishT/dotfiles.git`（**公开仓库**）
+- 远端：`git@github.com:<你的用户名>/<仓库名>.git`（**公开仓库**）
 - 备份命令：`dotsave`（= `~/.local/bin/dotsave`）
 - 恢复命令：`dotrestore`（= `~/.local/bin/dotrestore`）
 - 别名（在 `~/.zshrc`）：`dot` / `dsave` / `drestore`
@@ -23,8 +23,8 @@ mkdir -p ~/.ssh && chmod 700 ~/.ssh
 # 把 id_ed25519 放进去
 chmod 600 ~/.ssh/id_ed25519
 
-# 3) 克隆 bare 仓库
-git clone --bare git@github.com:bfishT/dotfiles.git "$HOME/.dotfiles"
+# 3) 克隆 bare 仓库（把 <GITHUB-USER>/<REPO> 换成你的）
+git clone --bare git@github.com:<GITHUB-USER>/<REPO>.git "$HOME/.dotfiles"
 git --git-dir="$HOME/.dotfiles" --work-tree="$HOME" config core.bare false
 git --git-dir="$HOME/.dotfiles" --work-tree="$HOME" config core.worktree "$HOME"
 git --git-dir="$HOME/.dotfiles" --work-tree="$HOME" config status.showUntrackedFiles no
@@ -37,7 +37,7 @@ dotrestore
 ```
 
 HTTPS 替代方案（没带 SSH key 时）：
-`git clone --bare https://github.com/bfishT/dotfiles.git "$HOME/.dotfiles"`
+`git clone --bare https://github.com/<GITHUB-USER>/<REPO>.git "$HOME/.dotfiles"`
 
 > 备份仓库**不包含**：SSH 私钥、GPG key、API key、`~/.ssh/config`、
 > 浏览器 profile、字体/图标主题、nvim/tmux 插件本体、HyDE 主题库。
@@ -79,6 +79,23 @@ dotrestore -y         # 就地恢复（会覆盖 $HOME 里的同名文件）
 
 ---
 
+## 2.5 私有值：`~/.config/dotfiles-private/env.sh`
+
+内网主机名 / 用户名 / SSH 别名这类不适合公开的值，全部集中在这一个**未跟踪**文件里，
+由 `.bashrc`、`.scripts/lock-all.sh`、`.local/bin/pushclipboard` 主动 source：
+
+```bash
+alias pac="ssh <user>@<host>"          # 原 .bashrc 里的内网别名
+export CLIPBOARD_TARGET="user@host"   # pushclipboard 默认目标
+export LOCK_HOST="user@host"          # lock-all.sh 联动锁屏主机（为空则只锁本机）
+```
+
+> 注意：这个文件 **不在仓库里**。新机器上需要重建（内容从密码管理器/备忘取）。
+> 仓库里的 `.bashrc` / `lock-all.sh` / `pushclipboard` 都已改成
+> “有就 source、没有就降级”的写法，所以缺了它不会报错。
+
+---
+
 ## 3. 白名单范围
 
 **在库内**（约 180 个文本文件，< 2MB）：
@@ -92,7 +109,17 @@ dotrestore -y         # 就地恢复（会覆盖 $HOME 里的同名文件）
 - 脚本：`.scripts/`、`.local/bin/{dotsave,dotrestore,pushclipboard}`
 - pi：`.pi/agent/{AGENTS.md,settings.json,keybindings.conf,keybindings.json,`
   `models.example.json,agents/,extensions/,skills/}`
-- 杂项：`.config/{user-dirs.dirs,mimeapps.list,ketch}`
+- 杂项：`.config/{user-dirs.dirs,mimeapps.list,ketch}`、
+  `.config/{pkglist.txt,pkglist-aur.txt}`（包清单）
+
+**不在库内、但需要本机存在的东西**（丢了不致命）：
+
+- `~/.config/git/config` —— git 提交身份（name/email）。
+  公开仓库不想暴露邮箱，所以身份放在这个未跟踪文件里，
+  `~/.gitconfig` 只留 proxy / lfs / core.editor。
+  新机器上执行：`git config --global user.name <你的名字>` +
+  `git config --global user.email <你的邮箱>`
+- `~/.config/dotfiles-private/env.sh` —— 内网主机、SSH 别名等私有值（见第 2.5 节）
 
 **明确不在库内**：
 
@@ -124,7 +151,6 @@ sed 's/"apiKey": "sk-[^"]*"/"apiKey": ""/' \
     ~/.pi/agent/models.json > ~/.pi/agent/models.example.json
 dsave -m "update models template"
 ```
-
 `auth.json` 也不在仓库里 → 新机器上在 pi 里重新 `/login`。
 
 ### 已知的这些 key 还散落在（都未入库，但别乱传）
@@ -157,25 +183,30 @@ dsave -m "update models template"
 
 见 `dotrestore` 结束时的输出，摘要：
 
-1. `cp models.example.json models.json` 并填 key
-2. `sudo pacman -S --needed - < ~/.config/pkglist.txt`（若已生成）
-3. nvim 里 `:Lazy restore`
-4. tmux 里 `prefix + I`（prefix = `C-a`）
-5. `git clone --depth=1 https://github.com/kovidgoyal/kitty-themes ~/.config/kitty/kitty-themes`
-6. 装字体/光标：`bibata-cursor-theme`、`ttf-jetbrains-mono-nerd` 等
-7. 重装 HyDE（若用它的主题/wallbash）
+1. `cp models.example.json models.json` 并填 key（`auth.json` 用 pi 的 `/login`）
+2. 重建私有值文件 `~/.config/dotfiles-private/env.sh`（见第 2.5 节）
+3. 设置 git 身份（仓库里没存邮箱）：
+   `git config --global user.name <名字>` + `git config --global user.email <邮箱>`
+4. `sudo pacman -S --needed - < ~/.config/pkglist.txt`
+   `yay -S --needed - < ~/.config/pkglist-aur.txt`
+5. nvim 里 `:Lazy restore`
+6. tmux 里 `prefix + I`（prefix = `C-a`）
+7. `git clone --depth=1 https://github.com/kovidgoyal/kitty-themes ~/.config/kitty/kitty-themes`
+8. 装字体/光标：`bibata-cursor-theme`、`ttf-jetbrains-mono-nerd` 等
+9. 重装 HyDE（若用它的主题/wallbash）
 
 ---
 
-## 7. 可选：包清单（强烈建议）
+## 7. 包清单（已在库内）
 
 ```bash
-pacman -Qqe > ~/.config/pkglist.txt       # 显式安装的官方包
-pacman -Qqm > ~/.config/pkglist-aur.txt   # AUR 包
-dsave -m "add pkglist"
+pacman -Qqe > ~/.config/pkglist.txt       # 显式安装的官方包（375 个）
+pacman -Qqm > ~/.config/pkglist-aur.txt   # AUR 包（160 个）
+dsave -m "update pkglist"
 ```
 
 重装时 `pacman -S --needed - < ~/.config/pkglist.txt` 可以省几小时。
+装了新包想刷新清单，就再跑上面这两条 + `dsave`。
 
 ## 8. 可选：第二副本
 

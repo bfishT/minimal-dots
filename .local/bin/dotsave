@@ -82,6 +82,8 @@ PATHS=(
 
   # ---- 其他 ----
   .config/ketch
+  .config/pkglist.txt
+  .config/pkglist-aur.txt
   .local/share/dotfiles
 )
 

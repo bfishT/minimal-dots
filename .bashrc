@@ -5,7 +5,8 @@ export INODE="/home/zxf/iNode/Linux/iNodeManager/iNodeSetup/iNodeClient"
 export LIBINPUT_ACCEL_PROFILE=flat
 export LIBINPUT_NATURAL_SCROLL_ENABLED=1
 export PATH="$PATH:/home/zxf/cplay"
-alias pac="ssh PAC20249140@10.82.24.30"
+# 私有设置（内网主机 / 别名等），存放在 ~/.config/dotfiles-private/，不入公开仓库
+[ -r "$HOME/.config/dotfiles-private/env.sh" ] && . "$HOME/.config/dotfiles-private/env.sh"
 
 # >>> conda initialize >>>
 # !! Contents within this block are managed by 'conda init' !!

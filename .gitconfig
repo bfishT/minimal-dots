@@ -7,9 +7,6 @@
 	proxy = http://127.0.0.1:7890
 [https]
 	proxy = http://127.0.0.1:7890
-[user]
-	name = bfishT
-	email = 3118805287@qq.com
 [core]
 	editor = nvim
 [color]
